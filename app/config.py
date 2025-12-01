@@ -1,0 +1,23 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_secret_key = os.getenv("SECRET_KEY")
+_algorithm = os.getenv("ALGORITHM")
+_database_url = os.getenv("SQLALCHEMY_DATABASE_URL")
+
+
+if not _secret_key:
+    raise ValueError("SECRET_KEY not found in .env")
+
+if not _algorithm:
+    raise ValueError("ALGORITHM not found in .env")
+
+if not _database_url:
+    raise ValueError("SQLALCHEMY_DATABASE_URL not found in .env")
+
+
+SECRET_KEY: str = _secret_key
+ALGORITHM: str = _algorithm
+SQLALCHEMY_DATABASE_URL: str = _database_url
