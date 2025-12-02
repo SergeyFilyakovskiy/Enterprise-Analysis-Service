@@ -1,159 +1,142 @@
 from app.models import FinancialReport
+from pydantic import BaseModel
 
+# --- СХЕМЫ ОТВЕТА (Pydantic) ---
+class AnalysisResultSchema(BaseModel):
+    liquidity: dict[str, float]
+    profitability: dict[str, float]
+    activity: dict[str, float]
+    bankruptcy_altman: dict[str, str | float]
+    bankruptcy_taffler: dict[str, str | float]
+
+# --- АНАЛИЗАТОР ---
 class FinancialAnalyzer:
     def __init__(self, report: FinancialReport):
         self.report = report
-        self.a = report.assets          # Сокращение для удобства
+        self.a = report.assets
         self.l = report.liabilities
         self.p = report.profit_loss
         
-        # Вспомогательные переменные (защита от деления на ноль)
-        self.total_assets = self.a.total_balance_assets or 1  # Если 0, ставим 1 чтобы не упало
-        self.revenue = self.p.revenue or 1
+        self._prepare_data()
 
-    def _safe_div(self, numerator, denominator):
-        """Безопасное деление"""
-        return round(numerator / denominator, 4) if denominator else 0
+    def _val(self, value) -> float:
+        """
+        Защита от None. Если в базе NULL, считаем как 0.0
+        """
+        if value is None:
+            return 0.0
+        return float(value)
 
-    # ==========================================
-    # 1. Вертикальный анализ (Структура)
-    # ==========================================
-    def get_vertical_analysis(self):
-        """Считаем долю каждой статьи в валюте баланса"""
+    def _prepare_data(self):
+        # Вспомогательная функция, чтобы собрать все нужные цифры в кучу
+        # и гарантировать, что они float, а не None.
+        
+        # 1. Активы
+        self.current_assets = self._val(self.a.total_current_assets)
+        self.non_current_assets = self._val(self.a.total_non_current_assets)
+        self.total_assets = self.current_assets + self.non_current_assets
+        # Если итог не сошелся или равен 0 (пустой отчет), ставим 1, чтобы не делить на ноль
+        if self.total_assets == 0: self.total_assets = 1.0
+
+        self.inventory = self._val(self.a.inventory)
+        self.cash = self._val(self.a.cash_and_equivalents)
+        self.receivables = self._val(self.a.accounts_receivable)
+        
+        # 2. Пассивы
+        self.short_liabilities = self._val(self.l.total_short_term_liabilities)
+        self.long_liabilities = self._val(self.l.total_long_term_liabilities)
+        self.total_liabilities = self.short_liabilities + self.long_liabilities
+        
+        self.equity = self._val(self.l.total_capital)
+        self.retained_earnings = self._val(self.l.retained_earnings)
+        
+        # 3. Прибыли
+        self.revenue = self._val(self.p.revenue)
+        self.net_profit = self._val(self.p.net_profit)
+        self.profit_before_tax = self._val(self.p.profit_before_tax)
+        self.sales_profit = self._val(self.p.sales_profit)
+        self.cost_of_sales = self._val(self.p.cost_of_sales)
+
+    def _safe_div(self, num: float, denom: float) -> float:
+        """Безопасное деление с округлением"""
+        if denom == 0:
+            return 0.0
+        return round(num / denom, 4)
+
+    # ============================
+    # МЕТОДЫ РАСЧЕТА
+    # ============================
+
+    def calc_liquidity(self):
         return {
-            "non_current_assets_share": self._safe_div(self.a.total_non_current_assets, self.total_assets),
-            "current_assets_share": self._safe_div(self.a.total_current_assets, self.total_assets),
-            "equity_share": self._safe_div(self.l.total_capital, self.total_assets), # Автономия
-            "liabilities_share": self._safe_div(self.l.total_long_term_liabilities + self.l.total_short_term_liabilities, self.total_assets)
+            "current_ratio": self._safe_div(self.current_assets, self.short_liabilities),
+            "quick_ratio": self._safe_div(self.current_assets - self.inventory, self.short_liabilities),
+            "absolute_ratio": self._safe_div(self.cash, self.short_liabilities),
         }
 
-    # ==========================================
-    # 2. Коэффициентный анализ (Ratios)
-    # ==========================================
-    def get_ratios(self):
+    def calc_profitability(self):
         return {
-            # --- Ликвидность ---
-            # Текущая ликвидность = Оборотные активы / Краткосрочные обязательства
-            "current_liquidity": self._safe_div(
-                self.a.total_current_assets, 
-                self.l.total_short_term_liabilities
-            ),
-            # Быстрая ликвидность = (Оборотные - Запасы) / Краткосрочные обяз.
-            "quick_liquidity": self._safe_div(
-                (self.a.total_current_assets - self.a.inventory),
-                self.l.total_short_term_liabilities
-            ),
-            # Абсолютная ликвидность = Деньги / Краткосрочные обяз.
-            "absolute_liquidity": self._safe_div(
-                self.a.cash_and_equivalents,
-                self.l.total_short_term_liabilities
-            ),
+            "ros": self._safe_div(self.net_profit, self.revenue) * 100,
+            "roa": self._safe_div(self.net_profit, self.total_assets) * 100,
+            "roe": self._safe_div(self.net_profit, self.equity) * 100,
+        }
 
-            # --- Рентабельность ---
-            # ROA = Чистая прибыль / Активы
-            "roa": self._safe_div(self.p.net_profit, self.total_assets),
-            # ROS = Чистая прибыль / Выручка
-            "ros": self._safe_div(self.p.net_profit, self.revenue),
+    def calc_activity(self):
+        # Оборачиваемость активов
+        asset_turnover = self._safe_div(self.revenue, self.total_assets)
+        
+        # Оборачиваемость запасов в днях
+        inventory_days = 0.0
+        if self.cost_of_sales != 0:
+            # cost_of_sales часто отрицательный в отчете, берем модуль
+            inventory_days = (365 * self.inventory) / abs(self.cost_of_sales)
             
-            # --- Финансовая устойчивость ---
-            # Коэф. автономии = Капитал / Активы
-            "autonomy": self._safe_div(self.l.total_capital, self.total_assets),
+        return {
+            "asset_turnover": asset_turnover,
+            "inventory_days": round(inventory_days, 1)
         }
 
-    # ==========================================
-    # 3. MDA (Multiple Discriminant Analysis) - Модель Альтмана
-    # ==========================================
-    def get_altman_z_score(self):
-        """
-        5-факторная модель Альтмана для частных компаний:
-        Z = 0.717*X1 + 0.847*X2 + 3.107*X3 + 0.420*X4 + 0.998*X5
-        """
-        # X1 = (Оборотные активы - Краткосрочные обяз) / Активы
-        working_capital = self.a.total_current_assets - self.l.total_short_term_liabilities
+    def calc_altman(self):
+        # Модель Альтмана для частных компаний (5-факторная)
+        working_capital = self.current_assets - self.short_liabilities
+        
         x1 = self._safe_div(working_capital, self.total_assets)
-
-        # X2 = Нераспределенная прибыль / Активы
-        x2 = self._safe_div(self.l.retained_earnings, self.total_assets)
-
-        # X3 = Прибыль до налогов / Активы
-        x3 = self._safe_div(self.p.profit_before_tax, self.total_assets)
-
-        # X4 = Капитал / Обязательства (все)
-        all_liabilities = self.l.total_long_term_liabilities + self.l.total_short_term_liabilities
-        x4 = self._safe_div(self.l.total_capital, all_liabilities)
-
-        # X5 = Выручка / Активы
+        x2 = self._safe_div(self.retained_earnings, self.total_assets)
+        x3 = self._safe_div(self.profit_before_tax, self.total_assets)
+        x4 = self._safe_div(self.equity, self.total_liabilities)
         x5 = self._safe_div(self.revenue, self.total_assets)
 
-        z_score = 0.717*x1 + 0.847*x2 + 3.107*x3 + 0.420*x4 + 0.998*x5
+        z = 0.717*x1 + 0.847*x2 + 3.107*x3 + 0.420*x4 + 0.998*x5
         
-        # Интерпретация
-        if z_score < 1.23: conclusion = "Высокая вероятность банкротства"
-        elif z_score > 2.9: conclusion = "Финансовая устойчивость высокая"
+        if z < 1.23: conclusion = "Высокая вероятность банкротства"
+        elif z > 2.9: conclusion = "Финансовое состояние устойчивое"
         else: conclusion = "Зона неопределенности"
 
-        return {"score": round(z_score, 3), "conclusion": conclusion}
+        return {"score": round(z, 3), "conclusion": conclusion}
 
-    # ==========================================
-    # 4. Logit-модель (Например, модель Таффлера или упрощенная)
-    # ==========================================
-    # Logit сложен тем, что выдает вероятность 0..1 через экспоненту.
-    # Возьмем популярную модель Лиса (она похожа на Z-score, но коэффициенты другие)
-    # Или настоящую Logit (Ольсона), но там нужны логарифмы и сложные данные.
-    # Для курсача часто под "Logit/Rating" имеют в виду Бивера или Бибаульта.
-    # Давай сделаем R-модель (четырехфакторная прогнозная модель ИГЭА) - популярна в РФ.
-    
-    def get_r_model_igea(self):
-        """Модель Иркутской ГЭА (адаптирована для РФ)"""
-        k1 = self._safe_div(self.a.total_current_assets, self.total_assets)
-        k2 = self._safe_div(self.p.net_profit, self.l.total_capital) # ROE
-        k3 = self._safe_div(self.revenue, self.total_assets)
-        k4 = self._safe_div(self.p.net_profit, self.p.cost_of_sales or 1)
+    def calc_taffler(self):
+        # Модель Таффлера (4-факторная)
+        x1 = self._safe_div(self.sales_profit, self.short_liabilities)
+        x2 = self._safe_div(self.current_assets, self.total_liabilities)
+        x3 = self._safe_div(self.short_liabilities, self.total_assets)
+        x4 = self._safe_div(self.revenue, self.total_assets)
+        
+        z = 0.53*x1 + 0.13*x2 + 0.18*x3 + 0.16*x4
+        
+        if z > 0.3: conclusion = "Риск банкротства низкий"
+        elif z < 0.2: conclusion = "Риск банкротства высокий"
+        else: conclusion = "Ситуация неопределенная"
 
-        r_score = 8.38*k1 + 1*k2 + 0.054*k3 + 0.63*k4
-        
-        conclusion = "Вероятность банкротства низкая (до 10%)"
-        if r_score < 0.42: conclusion = "Вероятность банкротства очень высокая"
-        
-        return {"score": round(r_score, 3), "conclusion": conclusion}
+        return {"score": round(z, 3), "conclusion": conclusion}
 
-    # ==========================================
-    # 5. Скоринговая модель (Рейтинг)
-    # ==========================================
-    def get_scoring_class(self):
-        """
-        Пример простой балльной оценки (Донцова-Никифорова или Сбербанк).
-        Начисляем баллы за показатели.
-        """
-        score = 0
-        
-        # 1. Оценка ликвидности
-        k_liq = self._safe_div(self.a.total_current_assets, self.l.total_short_term_liabilities)
-        if k_liq >= 2.0: score += 30
-        elif k_liq >= 1.0: score += 15
-        
-        # 2. Оценка автономии
-        k_aut = self._safe_div(self.l.total_capital, self.total_assets)
-        if k_aut >= 0.5: score += 20
-        
-        # 3. Рентабельность
-        if self.p.net_profit > 0: score += 20
-        
-        # Класс заемщика
-        if score >= 50: borrower_class = "Класс 1 (Отличное состояние)"
-        elif score >= 30: borrower_class = "Класс 2 (Среднее состояние)"
-        else: borrower_class = "Класс 3 (Плохое состояние)"
-
-        return {"score": score, "class": borrower_class}
-
-    # ==========================================
-    # ОБЩИЙ ЗАПУСК
-    # ==========================================
-    def perform_full_analysis(self):
-        return {
-            "vertical": self.get_vertical_analysis(),
-            "ratios": self.get_ratios(),
-            "mda_altman": self.get_altman_z_score(),
-            "logit_igea": self.get_r_model_igea(),
-            "scoring": self.get_scoring_class()
-        }
+    # ============================
+    # ГЛАВНЫЙ МЕТОД
+    # ============================
+    def get_full_analysis(self) -> AnalysisResultSchema:
+        return AnalysisResultSchema(
+            liquidity=self.calc_liquidity(),
+            profitability=self.calc_profitability(),
+            activity=self.calc_activity(),
+            bankruptcy_altman=self.calc_altman(),
+            bankruptcy_taffler=self.calc_taffler()
+        )

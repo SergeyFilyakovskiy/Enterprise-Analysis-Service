@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 from typing import Annotated
 from starlette import status
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from jose import jwt, JWTError
+from fastapi.security import (OAuth2PasswordRequestForm, OAuth2PasswordBearer)
 from ..models import User
 from ..schemas import UserSchema
 from ..database import db_dependency, get_db
