@@ -14,7 +14,10 @@ router = APIRouter(
     tags=['analysis']
 )
 
-@router.get("/{report_id}", response_model=AnalysisResultSchema)
+@router.get("/{report_id}", 
+            response_model=AnalysisResultSchema, 
+            status_code=status.HTTP_200_OK
+)
 async def analyze_report(
     report_id: int = Path(gt=0),
     db: AsyncSession = Depends(get_db),

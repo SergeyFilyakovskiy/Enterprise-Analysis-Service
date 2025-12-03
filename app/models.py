@@ -41,9 +41,23 @@ class FinancialReport(Base):
     period = Column(String, nullable=False)
     created_at = Column(DateTime,  default=lambda: datetime.now(timezone.utc))
 
-    assets = relationship("ReportAssets", back_populates="report", uselist=False)
-    liabilities = relationship ("ReportLiabilities", back_populates="report", uselist=False)
-    profit_loss = relationship("ReportProfitLoss", back_populates="report", uselist=False)
+    assets = relationship("ReportAssets", 
+                          back_populates="report", 
+                          uselist=False, 
+                          cascade="all, delete-orphan"
+    )
+    
+    
+    liabilities = relationship ("ReportLiabilities", 
+                                back_populates="report", 
+                                uselist=False,
+                                cascade="all, delete-orphan"
+    )
+    profit_loss = relationship("ReportProfitLoss", 
+                               back_populates="report", 
+                               uselist=False,
+                               cascade="all, delete-orphan"
+    )
 
 class ReportAssets(Base):
     """

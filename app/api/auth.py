@@ -8,14 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import timedelta, timezone, datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 from typing import Annotated
 from starlette import status
 from jose import jwt, JWTError
 from fastapi.security import (OAuth2PasswordRequestForm, OAuth2PasswordBearer)
 from ..models import User
-from ..schemas import UserSchema
+from ..schemas import UserSchema, TokenData
 from ..database import db_dependency, get_db
 from ..config import SECRET_KEY, ALGORITHM
 
@@ -34,12 +34,12 @@ oauth2_brearer = OAuth2PasswordBearer(
 )
 
 class CreteUserRequest(BaseModel):
-    username: str
-    first_name: str
-    last_name: str
+    username: str = Field(min_length=2, max_length=30)
+    first_name: str = Field(min_length=2, max_length=30)
+    last_name: str = Field(min_length=2, max_length=30)
     email: str
-    password: str
-    role: str
+    password: str = Field(min_length=3, max_length=30)
+    role: str 
 
 class Token(BaseModel):
     access_token: str
@@ -70,26 +70,26 @@ def crate_access_token (
     encode = {'sub': username, 'id': user_id, 'role': role, 'exp': expires}
     return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_brearer)]):
+async def get_current_user(token: Annotated[str, Depends(oauth2_brearer)])-> TokenData:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get('sub')
         user_id = payload.get('id')
         user_role = payload.get('role')
 
-        if username is None or user_id is None:
+        if username is None or user_id is None or user_role is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, 
                 detail= "Could not validate user."
                 )
-        return {'user_name': username, 'id': user_id, 'user_role': user_role}
+        return TokenData(id=user_id, username=username, role=user_role)
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Could not validate user."
             )
     
-@router.post("/") 
+@router.post("/", status_code=status.HTTP_201_CREATED) 
 async def create_user (
     db: db_dependency,
     create_user_request: CreteUserRequest
@@ -103,7 +103,7 @@ async def create_user (
         hashed_password = bcrypt_context.hash(create_user_request.password)
     )
     
-    db.add(create_user_request)
+    db.add(new_user)
     try:
         await db.commit()
     except IntegrityError:

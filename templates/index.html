@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="guest-content" class="text-center mt-5" style="display: none;">
+    <h1>Добро пожаловать в ФинАнализ!</h1>
+    <p class="lead">Загружайте бухгалтерские отчеты и получайте мгновенный анализ финансового состояния.</p>
+    <a href="/login" class="btn btn-primary btn-lg mt-3">Начать работу</a>
+</div>
+
+<div id="user-content" style="display: none;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Мои отчеты</h2>
+        <a href="/upload" class="btn btn-success">+ Загрузить отчет</a>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="reportsTable">
+                    <thead>
+                        <tr>
+                            <th>Организация</th>
+                            <th>Период</th>
+                            <th>Дата загрузки</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportsBody">
+
+                    </tbody>
+                </table>
+            </div>
+            <div id="loading" class="text-center py-3">Загрузка...</div>
+            <div id="no-reports" class="text-center py-3 text-muted" style="display: none;">
+                У вас пока нет загруженных отчетов.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", async function() {
+        const token = localStorage.getItem('access_token');
+        
+        if (!token) {
+            document.getElementById('guest-content').style.display = 'block';
+            return;
+        }
+
+        document.getElementById('user-content').style.display = 'block';
+        
+        try {
+            const response = await fetch('/reports/', {
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                }
+            });
+
+            if (response.ok) {
+                const reports = await response.json();
+                renderReports(reports);
+            } else if (response.status === 401) {
+                logout();
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    });
+
+    function renderReports(reports) {
+        const tbody = document.getElementById('reportsBody');
+        
+        if (reports.length === 0) {
+            document.getElementById('no-reports').style.display = 'block';
+            return;
+        }
+
+        reports.forEach(report => {
+            const date = new Date(report.created_at).toLocaleDateString('ru-RU');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${report.organization_name}</td>
+                <td>${report.period}</td>
+                <td>${date}</td>
+                <td>
+                    <a href="/analysis/${report.id}" class="btn btn-sm btn-info text-white">Анализ</a>
+                    <button onclick="deleteReport(${report.id})" class="btn btn-sm btn-danger">Удалить</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function deleteReport(id) {
+        if (!confirm('Вы уверены, что хотите удалить этот отчет?')) return;
+        
+        const token = localStorage.getItem('access_token');
+        await fetch(`/reports/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        
+        window.location.reload();
+    }
+</script>
+{% endblock %}

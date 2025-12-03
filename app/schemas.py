@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import Optional
 from datetime import datetime
+from .models import UserRole
 
 
 class UserSchema(BaseModel):
@@ -26,13 +27,26 @@ END
 SCHEMAS FOR FINANCIAL REPORT
 
 """
+
+class CompareRow(BaseModel):
+    indicator: str      # Название показателя (Выручка)
+    value_base: float   # Значение в прошлом году
+    value_curr: float   # Значение в текущем году
+    abs_change: float   # Абсолютное изменение (+/-)
+    growth_rate: float  # Темп прироста (%)
+
+class CompareResponse(BaseModel):
+    organization: str
+    period_base: str
+    period_curr: str
+    rows: list[CompareRow]
+
 # ==========================================
 # Вложенные компоненты (Активы, Пассивы, ОПУ)
 # ==========================================
 
 class AssetsSchema(BaseModel):
     """Разделы I и II баланса"""
-    # Используем Optional[float] = 0.0, чтобы если фронт не прислал поле, оно стало нулем
     intangible_assets: Optional[float] = 0.0
     research_and_dev_results: Optional[float] = 0.0
     intangible_search_assets: Optional[float] = 0.0
@@ -137,3 +151,64 @@ class FinancialReportResponse(FinancialReportCreate):
 END
 
 """
+
+"""
+
+SCHEMAS FOR USER ROUTER
+
+"""
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: UserRole
+
+    class Config:
+        from_attributes = True
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=6)
+
+class UpdateProfileRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+class UpdateRoleRequest(BaseModel):
+    role: UserRole 
+
+"""
+
+END
+
+"""
+
+"""
+
+SCHEMA FOR TOKEN DATA
+
+"""
+
+class TokenData(BaseModel):
+    id: int
+    username: str
+    role: str
+
+"""
+
+END
+
+"""
+
+class ReportSummary(BaseModel):
+    id: int
+    organization_name: str
+    period: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True

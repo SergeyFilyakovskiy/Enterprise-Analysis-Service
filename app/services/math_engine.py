@@ -1,5 +1,6 @@
-from app.models import FinancialReport
+from ..models import FinancialReport
 from pydantic import BaseModel
+from ..schemas import CompareRow,CompareResponse
 
 # --- СХЕМЫ ОТВЕТА (Pydantic) ---
 class AnalysisResultSchema(BaseModel):
@@ -139,4 +140,55 @@ class FinancialAnalyzer:
             activity=self.calc_activity(),
             bankruptcy_altman=self.calc_altman(),
             bankruptcy_taffler=self.calc_taffler()
+        )
+
+class ReportComparator:
+    """
+    Сервис для горизонтального анализа (сравнения двух отчетов)
+    """
+    
+    @staticmethod
+    def compare(base_rep: FinancialReport, curr_rep: FinancialReport) -> CompareResponse:
+        
+        def calc_row(name: str, val_base, val_curr) -> CompareRow:
+
+            v1 = float(val_base) if val_base is not None else 0.0
+            v2 = float(val_curr) if val_curr is not None else 0.0
+            
+            diff = v2 - v1
+            growth = 0.0
+            
+            if v1 != 0:
+                growth = (diff / abs(v1)) * 100
+                
+            return CompareRow(
+                indicator=name,
+                value_base=v1,
+                value_curr=v2,
+                abs_change=round(diff, 2),
+                growth_rate=round(growth, 2)
+            )
+
+        rows = []
+        
+        # 1. Выручка
+        rows.append(calc_row("Выручка", base_rep.profit_loss.revenue, curr_rep.profit_loss.revenue))
+        
+        # 2. Чистая прибыль
+        rows.append(calc_row("Чистая прибыль", base_rep.profit_loss.net_profit, curr_rep.profit_loss.net_profit))
+        
+        # 3. Валюта баланса (Активы)
+        assets_base = (base_rep.assets.total_current_assets or 0) + (base_rep.assets.total_non_current_assets or 0)
+        assets_curr = (curr_rep.assets.total_current_assets or 0) + (curr_rep.assets.total_non_current_assets or 0)
+        
+        rows.append(calc_row("Валюта баланса", assets_base, assets_curr))
+        
+        # 4. Собственный капитал (важный показатель устойчивости)
+        rows.append(calc_row("Собственный капитал", base_rep.liabilities.total_capital, curr_rep.liabilities.total_capital))
+
+        return CompareResponse(
+            organization=base_rep.organization_name,
+            period_base=base_rep.period,
+            period_curr=curr_rep.period,
+            rows=rows
         )
