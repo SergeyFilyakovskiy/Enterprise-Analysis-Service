@@ -15,23 +15,33 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
         <div class="container">
             <a class="navbar-brand" href="/">ФинАнализ Сервис</a>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        
+                        <!-- Ссылки для ГОСТЕЙ -->
+                        <li class="nav-item" id="nav-login">
+                            <a class="nav-link" href="/login">Вход</a>
+                        </li>
+                        <li class="nav-item" id="nav-register">
+                            <a class="nav-link" href="/register">Регистрация</a>
+                        </li>
+                        
+                        <!-- Ссылки для АВТОРИЗОВАННЫХ -->
+                        <li class="nav-item d-none" id="nav-dashboard">
+                            <a class="nav-link" href="/">Мои отчеты</a>
+                        </li>
+                        
+                        <li class="nav-item d-none" id="nav-profile">
+                            <a class="nav-link" href="/profile">👤 Профиль</a>
+                        </li>
 
-                    <li class="nav-item" id="nav-login">
-                        <a class="nav-link" href="/login">Вход</a>
-                    </li>
-                    <li class="nav-item" id="nav-register">
-                        <a class="nav-link" href="/register">Регистрация</a>
-                    </li>
-                    <li class="nav-item d-none" id="nav-dashboard">
-                        <a class="nav-link" href="/">Мои отчеты</a>
-                    </li>
-                    <li class="nav-item d-none" id="nav-logout">
-                        <a class="nav-link" href="#" onclick="logout()">Выход</a>
-                    </li>
-                </ul>
-            </div>
+                        <li class="nav-item d-none" id="nav-logout">
+                            <a class="nav-link" href="#" onclick="logout()">Выход</a>
+                        </li>
+
+                    </ul>
+                </div>
+
         </div>
     </nav>
 

@@ -52,7 +52,6 @@ async def upload_page(request: Request):
 async def analysis_page(request: Request, report_id: int):
     return templates.TemplateResponse("analysis_result.html", {"request": request, "title": "Результаты анализа", "report_id": report_id})
 
-@app.get("/upload", response_class=HTMLResponse)
-async def upload_page(request: Request):
-    return templates.TemplateResponse("report_upload.html", {"request": request, "title": "Загрузка"})
-
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request):
+    return templates.TemplateResponse("profile.html", {"request": request, "title": "Мой профиль"})

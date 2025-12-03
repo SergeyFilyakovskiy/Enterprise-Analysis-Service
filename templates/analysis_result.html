@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Результаты анализа</h2>
+    <div>
+        <a href="/{{ report_id }}/export/pdf" class="btn btn-outline-danger" target="_blank">📄 Скачать PDF</a>
+        <a href="/" class="btn btn-outline-secondary">← Назад</a>
+    </div>
+</div>
+
+<!-- БЛОК ЗАГРУЗКИ -->
+<div id="loading" class="text-center py-5">
+    <div class="spinner-border text-primary" role="status"></div>
+    <p class="mt-2">Выполняем расчеты...</p>
+</div>
+
+<!-- БЛОК РЕЗУЛЬТАТОВ (Скрыт) -->
+<div id="results" style="display: none;">
+    
+    <!-- 1. ЛИКВИДНОСТЬ -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">1. Анализ ликвидности</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="alert alert-secondary text-center">
+                        <h6>Текущая ликвидность</h6>
+                        <h3 id="current_liquidity">-</h3>
+                        <small>Норма: > 2.0</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="alert alert-secondary text-center">
+                        <h6>Быстрая ликвидность</h6>
+                        <h3 id="quick_liquidity">-</h3>
+                        <small>Норма: > 1.0</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="alert alert-secondary text-center">
+                        <h6>Абсолютная ликвидность</h6>
+                        <h3 id="absolute_liquidity">-</h3>
+                        <small>Норма: > 0.2</small>
+                    </div>
+                </div>
+            </div>
+            <p class="text-muted fst-italic" id="liquidity_conclusion">
+                <!-- Сюда JS вставит вывод -->
+            </p>
+        </div>
+    </div>
+
+    <!-- 2. РЕНТАБЕЛЬНОСТЬ -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">2. Анализ рентабельности</h5>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead><tr><th>Показатель</th><th>Значение</th></tr></thead>
+                <tbody>
+                    <tr><td>Рентабельность продаж (ROS)</td><td id="ros" class="fw-bold">-</td></tr>
+                    <tr><td>Рентабельность активов (ROA)</td><td id="roa" class="fw-bold">-</td></tr>
+                    <tr><td>Рентабельность капитала (ROE)</td><td id="roe" class="fw-bold">-</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 3. БАНКРОТСТВО -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4 border-warning">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-warning">Модель Альтмана (Z-Score)</h5>
+                    <h2 class="display-4" id="altman_score">-</h2>
+                    <div id="altman_badge" class="badge bg-secondary fs-6">Неизвестно</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-4 border-warning">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-warning">Модель Таффлера</h5>
+                    <h2 class="display-4" id="taffler_score">-</h2>
+                    <div id="taffler_badge" class="badge bg-secondary fs-6">Неизвестно</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", async function() {
+        const reportId = {{ report_id }}; // Jinja вставит ID
+        const token = localStorage.getItem('access_token');
+
+        try {
+            // Делаем запрос на ручку анализа (не HTML, а JSON API)
+            // Проверь, есть ли у тебя ручка GET /analysis/{id} возвращающая JSON
+            const response = await fetch(`/analysis/${reportId}/json`, { ... });
+
+            if (response.ok) {
+                const data = await response.json();
+                renderResults(data);
+            } else {
+                alert('Ошибка загрузки анализа');
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+        }
+    });
+
+    function renderResults(data) {
+        // Ликвидность
+        document.getElementById('current_liquidity').innerText = data.liquidity.current_ratio.toFixed(2);
+        document.getElementById('quick_liquidity').innerText = data.liquidity.quick_ratio.toFixed(2);
+        document.getElementById('absolute_liquidity').innerText = data.liquidity.absolute_ratio.toFixed(2);
+
+        // Рентабельность
+        document.getElementById('ros').innerText = data.profitability.return_on_sales.toFixed(2) + '%';
+        document.getElementById('roa').innerText = data.profitability.return_on_assets.toFixed(2) + '%';
+        document.getElementById('roe').innerText = data.profitability.return_on_equity.toFixed(2) + '%';
+
+        // Альтман
+        const z = data.bankruptcy_altman.z_score;
+        document.getElementById('altman_score').innerText = z.toFixed(2);
+        const altBadge = document.getElementById('altman_badge');
+        altBadge.innerText = data.bankruptcy_altman.risk_assessment;
+        
+        if (data.bankruptcy_altman.risk_assessment.includes("Низкий")) altBadge.className = "badge bg-success fs-6";
+        else if (data.bankruptcy_altman.risk_assessment.includes("Высокий")) altBadge.className = "badge bg-danger fs-6";
+        else altBadge.className = "badge bg-warning text-dark fs-6";
+
+        // Таффлер (аналогично)
+        const t = data.bankruptcy_taffler.t_score;
+        document.getElementById('taffler_score').innerText = t.toFixed(2);
+        const tafBadge = document.getElementById('taffler_badge');
+        tafBadge.innerText = data.bankruptcy_taffler.risk_assessment;
+    }
+</script>
+{% endblock %}

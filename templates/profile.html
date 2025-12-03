@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Личный кабинет</h2>
+
+    <div class="row">
+        <!-- ЛЕВАЯ КОЛОНКА: Данные профиля -->
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Данные пользователя</h5>
+                </div>
+                <div class="card-body">
+                    <form id="profileForm">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Логин</label>
+                            <input type="text" class="form-control" id="username" disabled>
+                            <div class="form-text">Логин нельзя изменить.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" required>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Имя</label>
+                                <input type="text" class="form-control" id="first_name">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Фамилия</label>
+                                <input type="text" class="form-control" id="last_name">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Роль</label>
+                            <span class="badge bg-info" id="role">user</span>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">💾 Сохранить изменения</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ПРАВАЯ КОЛОНКА: Безопасность -->
+        <div class="col-md-6">
+            <!-- Смена пароля -->
+            <div class="card shadow-sm mb-4 border-warning">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">Смена пароля</h5>
+                </div>
+                <div class="card-body">
+                    <form id="passwordForm">
+                        <div class="mb-3">
+                            <label class="form-label">Старый пароль</label>
+                            <input type="password" class="form-control" id="old_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Новый пароль</label>
+                            <input type="password" class="form-control" id="new_password" required minlength="6">
+                        </div>
+                        <button type="submit" class="btn btn-warning">Обновить пароль</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Опасная зона -->
+            <div class="card shadow-sm border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">Опасная зона</h5>
+                </div>
+                <div class="card-body">
+                    <p>Удаление аккаунта приведет к уничтожению всех ваших отчетов. Это действие нельзя отменить.</p>
+                    <button onclick="deleteAccount()" class="btn btn-outline-danger w-100">Удалить мой аккаунт</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", async function() {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/login';
+            return;
+        }
+
+        // 1. Загружаем текущие данные
+        try {
+            const response = await fetch('/users/me', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            
+            if (response.ok) {
+                const user = await response.json();
+                document.getElementById('username').value = user.username;
+                document.getElementById('email').value = user.email;
+                document.getElementById('first_name').value = user.first_name || '';
+                document.getElementById('last_name').value = user.last_name || '';
+                document.getElementById('role').innerText = user.role;
+                
+                // Сохраняем ID для удаления
+                window.currentUserId = user.id;
+            } else {
+                alert('Ошибка загрузки профиля. Войдите снова.');
+                window.location.href = '/login';
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    });
+
+    // 2. Обновление профиля
+    document.getElementById('profileForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const token = localStorage.getItem('access_token');
+
+        const payload = {
+            email: document.getElementById('email').value,
+            first_name: document.getElementById('first_name').value,
+            last_name: document.getElementById('last_name').value
+        };
+
+        const response = await fetch('/users/me', {
+            method: 'PUT',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token 
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) alert('Профиль обновлен!');
+        else alert('Ошибка обновления профиля');
+    });
+
+    // 3. Смена пароля
+    document.getElementById('passwordForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const token = localStorage.getItem('access_token');
+        
+        const payload = {
+            old_password: document.getElementById('old_password').value,
+            new_password: document.getElementById('new_password').value
+        };
+
+        const response = await fetch('/users/password', {
+            method: 'PUT',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token 
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            alert('Пароль изменен успешно!');
+            document.getElementById('passwordForm').reset();
+        } else {
+            const err = await response.json();
+            alert('Ошибка: ' + err.detail);
+        }
+    });
+
+    // 4. Удаление аккаунта
+    async function deleteAccount() {
+        if (!confirm('Вы ТОЧНО хотите удалить свой аккаунт? Все данные будут потеряны навсегда.')) return;
+        
+        const token = localStorage.getItem('access_token');
+        const userId = window.currentUserId;
+
+        const response = await fetch(`/users/${userId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+
+        if (response.status === 204) {
+            alert('Аккаунт удален. До свидания.');
+            localStorage.removeItem('access_token');
+            window.location.href = '/register';
+        } else {
+            alert('Ошибка при удалении аккаунта');
+        }
+    }
+</script>
+{% endblock %}

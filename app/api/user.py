@@ -15,7 +15,7 @@ router = APIRouter(
 # ==========================================
 # 1. Получить свой профиль
 # ==========================================
-@router.get("/", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse)
 async def read_user_profile(
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(get_current_user)

@@ -14,7 +14,7 @@ router = APIRouter(
     tags=['analysis']
 )
 
-@router.get("/{report_id}", 
+@router.get("/{report_id}/json", 
             response_model=AnalysisResultSchema, 
             status_code=status.HTTP_200_OK
 )
