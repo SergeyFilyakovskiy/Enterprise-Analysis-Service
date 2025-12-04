@@ -4,7 +4,10 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Результаты анализа</h2>
     <div>
-        <a href="/{{ report_id }}/export/pdf" class="btn btn-outline-danger" target="_blank">📄 Скачать PDF</a>
+        <!-- Кнопка скачивания через JS с токеном -->
+        <button onclick="downloadPDF({{ report_id }})" class="btn btn-outline-danger">
+            📄 Скачать PDF
+        </button>
         <a href="/" class="btn btn-outline-secondary">← Назад</a>
     </div>
 </div>
@@ -47,9 +50,6 @@
                     </div>
                 </div>
             </div>
-            <p class="text-muted fst-italic" id="liquidity_conclusion">
-                <!-- Сюда JS вставит вывод -->
-            </p>
         </div>
     </div>
 
@@ -95,55 +95,132 @@
 </div>
 
 <script>
+    // === 1. ЗАГРУЗКА ДАННЫХ АНАЛИЗА ===
     document.addEventListener("DOMContentLoaded", async function() {
-        const reportId = {{ report_id }}; // Jinja вставит ID
+        const reportId = {{ report_id }}; 
         const token = localStorage.getItem('access_token');
 
+        if (!token) {
+            alert("Вы не авторизованы!");
+            window.location.href = "/login";
+            return;
+        }
+
         try {
-            // Делаем запрос на ручку анализа (не HTML, а JSON API)
-            // Проверь, есть ли у тебя ручка GET /analysis/{id} возвращающая JSON
-            const response = await fetch(`/analysis/${reportId}/json`, { ... });
+            const response = await fetch(`/analysis/${reportId}/json`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            });
 
             if (response.ok) {
                 const data = await response.json();
                 renderResults(data);
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'block';
             } else {
-                alert('Ошибка загрузки анализа');
+                if (response.status === 401) {
+                    alert('Сессия истекла. Пожалуйста, войдите снова.');
+                    window.location.href = '/login';
+                } else {
+                    alert(`Ошибка загрузки анализа: ${response.status}`);
+                }
+                document.getElementById('loading').style.display = 'none';
             }
         } catch (e) {
-            console.error(e);
-        } finally {
+            console.error("Network Error:", e);
+            alert('Произошла ошибка соединения с сервером');
             document.getElementById('loading').style.display = 'none';
-            document.getElementById('results').style.display = 'block';
         }
     });
 
+    // === 2. ФУНКЦИЯ ОТРИСОВКИ ===
     function renderResults(data) {
-        // Ликвидность
-        document.getElementById('current_liquidity').innerText = data.liquidity.current_ratio.toFixed(2);
-        document.getElementById('quick_liquidity').innerText = data.liquidity.quick_ratio.toFixed(2);
-        document.getElementById('absolute_liquidity').innerText = data.liquidity.absolute_ratio.toFixed(2);
+        const safeFixed = (val) => (val !== undefined && val !== null) ? Number(val).toFixed(2) : '-';
 
-        // Рентабельность
-        document.getElementById('ros').innerText = data.profitability.return_on_sales.toFixed(2) + '%';
-        document.getElementById('roa').innerText = data.profitability.return_on_assets.toFixed(2) + '%';
-        document.getElementById('roe').innerText = data.profitability.return_on_equity.toFixed(2) + '%';
+        document.getElementById('current_liquidity').innerText = safeFixed(data.liquidity?.current_ratio);
+        document.getElementById('quick_liquidity').innerText = safeFixed(data.liquidity?.quick_ratio);
+        document.getElementById('absolute_liquidity').innerText = safeFixed(data.liquidity?.absolute_ratio);
 
-        // Альтман
-        const z = data.bankruptcy_altman.z_score;
-        document.getElementById('altman_score').innerText = z.toFixed(2);
-        const altBadge = document.getElementById('altman_badge');
-        altBadge.innerText = data.bankruptcy_altman.risk_assessment;
-        
-        if (data.bankruptcy_altman.risk_assessment.includes("Низкий")) altBadge.className = "badge bg-success fs-6";
-        else if (data.bankruptcy_altman.risk_assessment.includes("Высокий")) altBadge.className = "badge bg-danger fs-6";
-        else altBadge.className = "badge bg-warning text-dark fs-6";
+        document.getElementById('ros').innerText = safeFixed(data.profitability?.ros) + '%';
+        document.getElementById('roa').innerText = safeFixed(data.profitability?.roa) + '%';
+        document.getElementById('roe').innerText = safeFixed(data.profitability?.roe) + '%';
 
-        // Таффлер (аналогично)
-        const t = data.bankruptcy_taffler.t_score;
-        document.getElementById('taffler_score').innerText = t.toFixed(2);
-        const tafBadge = document.getElementById('taffler_badge');
-        tafBadge.innerText = data.bankruptcy_taffler.risk_assessment;
+        if (data.bankruptcy_altman) {
+            document.getElementById('altman_score').innerText = safeFixed(data.bankruptcy_altman.z_score || data.bankruptcy_altman.score); // проверил и то, и другое
+            const altBadge = document.getElementById('altman_badge');
+            const risk = (data.bankruptcy_altman.risk_assessment || data.bankruptcy_altman.conclusion || "Неизвестно").toLowerCase();
+            altBadge.innerText = data.bankruptcy_altman.risk_assessment || data.bankruptcy_altman.conclusion;
+            
+            altBadge.className = "badge fs-6 " + (
+                (risk.includes("низкий") || risk.includes("устойчивое")) ? "bg-success" :
+                risk.includes("высокий") ? "bg-danger" : "bg-warning text-dark"
+            );
+        }
+
+        if (data.bankruptcy_taffler) {
+            document.getElementById('taffler_score').innerText = safeFixed(data.bankruptcy_taffler.t_score || data.bankruptcy_taffler.score);
+            const tafBadge = document.getElementById('taffler_badge');
+            const riskT = (data.bankruptcy_taffler.risk_assessment || data.bankruptcy_taffler.conclusion || "Неизвестно").toLowerCase();
+            tafBadge.innerText = data.bankruptcy_taffler.risk_assessment || data.bankruptcy_taffler.conclusion;
+            
+            tafBadge.className = "badge fs-6 " + (
+                (riskT.includes("низкий") || riskT.includes("устойчивое")) ? "bg-success" :
+                riskT.includes("высокий") ? "bg-danger" : "bg-warning text-dark"
+            );
+        }
+    }
+
+    async function downloadPDF(reportId) {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            alert("Вы не авторизованы!");
+            window.location.href = '/login';
+            return;
+        }
+
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.innerText = "⏳ Скачивание...";
+        btn.disabled = true;
+
+        try {
+            const response = await fetch(`/reports/${reportId}/export/pdf`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `report_${reportId}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } else {
+                if (response.status === 401) {
+                     alert("Ошибка авторизации. Войдите снова.");
+                     window.location.href = '/login';
+                } else {
+                     alert("Ошибка скачивания: " + response.statusText);
+                }
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Ошибка сети при скачивании");
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
     }
 </script>
 {% endblock %}

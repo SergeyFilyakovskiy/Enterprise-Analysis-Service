@@ -1,13 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Response, status, UploadFile, File
 from starlette import status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
+
+from app.services.pdf_generator import PDFGenerator
 from ..database import get_db
 from ..models import User, FinancialReport, ReportAssets, ReportLiabilities, ReportProfitLoss
 from ..schemas import FinancialReportCreate, FinancialReportResponse, ReportSummary, CompareResponse
 from .auth import get_current_user 
-from ..services.math_engine import ReportComparator
+from ..services.math_engine import FinancialAnalyzer, ReportComparator
 from ..services.excel_parser import parse_balance_sheet
 
 
@@ -148,3 +150,52 @@ async def parse_excel_file(file: UploadFile = File(...)):
         return data 
     except Exception as e:
         raise HTTPException(400, f"Error parsing file: {e}")
+    
+
+@router.get("/{report_id}/export/pdf")
+async def export_report_pdf(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+
+    stmt = (
+        select(FinancialReport)
+        .where(FinancialReport.id == report_id)
+        .options(
+            selectinload(FinancialReport.assets),
+            selectinload(FinancialReport.liabilities),
+            selectinload(FinancialReport.profit_loss),
+        )
+    )
+    result = await db.execute(stmt)
+    report: FinancialReport | None = result.scalar_one_or_none()
+
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    if report.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        analyzer = FinancialAnalyzer(report)
+        analysis_result = analyzer.get_full_analysis()  
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to perform analysis: {e}",
+        )
+
+    pdf_buffer = PDFGenerator.generate_report(
+        organization=report.organization_name,
+        period=report.period,
+        data=analysis_result,
+    )
+
+    return Response(
+        content=pdf_buffer.getvalue(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="report_{report_id}.pdf"'
+        },
+    )

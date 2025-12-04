@@ -174,8 +174,8 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=6)
 
 class UpdateProfileRequest(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    first_name: Optional[str] = Field(min_length=3, max_length=30)
+    last_name: Optional[str] = Field(min_length=3, max_length=30)
     email: Optional[EmailStr] = None
 
 class UpdateRoleRequest(BaseModel):

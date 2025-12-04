@@ -33,7 +33,7 @@ async def read_user_profile(
 # ==========================================
 # 2. Изменить данные профиля
 # ==========================================
-@router.put("/edit", response_model=UserResponse)
+@router.put("/me", response_model=UserResponse)
 async def update_user_profile(
     update_data: UpdateProfileRequest,
     db: AsyncSession = Depends(get_db),

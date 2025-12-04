@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Enum, ForeignKey, Integer, String, DateTime, Float
+from sqlalchemy import Column, Enum, ForeignKey, Integer, String, DateTime, Float, func
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
@@ -39,7 +39,7 @@ class FinancialReport(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     organization_name = Column(String, nullable=False)
     period = Column(String, nullable=False)
-    created_at = Column(DateTime,  default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime,  default= func.now())
 
     assets = relationship("ReportAssets", 
                           back_populates="report", 
